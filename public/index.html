@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#183d32">
+  <meta name="description" content="Uma galeria especial de fotos e memórias do Nathanael.">
+  <title>Memórias do Nathanael</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="premium.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Página inicial">
+      <span class="brand-mark">N</span>
+      <span><strong>Nathanael</strong><small>memórias para guardar</small></span>
+    </a>
+    <a class="top-link" href="#sobre">Sobre a galeria <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> UM ÁLBUM CHEIO DE CARINHO</p>
+        <h1>Pequenos momentos,<br><em>grandes memórias.</em></h1>
+        <p class="hero-description">Um cantinho especial para guardar, compartilhar e reviver cada fase do Nathanael.</p>
+        <a class="primary-button" href="#albuns">Explorar os álbuns <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="hero-art" aria-label="Ilustração decorativa de folhas">
+        <div class="art-circle"></div><div class="leaf leaf-one"></div><div class="leaf leaf-two"></div>
+        <div class="art-note"><span>♡</span><div><strong>Feito com amor</strong><small>cada foto conta uma história</small></div></div>
+      </div>
+    </section>
+
+    <section class="album-section" id="albuns">
+      <div class="section-heading">
+        <div><p class="eyebrow">NOSSA COLEÇÃO</p><h2>Momentos especiais</h2></div>
+        <p class="section-intro">Escolha um álbum para ver as fotos.</p>
+      </div>
+      <div id="status" class="status" role="status">Preparando suas memórias…</div>
+      <div id="album-grid" class="album-grid"></div>
+    </section>
+
+    <section id="album-view" class="photo-section hidden">
+      <div class="album-toolbar">
+        <button id="back-button" class="text-button" type="button">← Todos os álbuns</button>
+        <div><p class="eyebrow">ÁLBUM SELECIONADO</p><h2 id="album-title">Álbum</h2><p id="album-description" class="section-intro"></p></div>
+        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><a id="upload-link" class="primary-button small-button" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
+      </div>
+      <div id="photo-grid" class="photo-grid"></div>
+      <p id="empty-photos" class="empty-state hidden">Este álbum ainda não tem fotos. Você pode ser a primeira pessoa a adicionar uma memória. 💚</p>
+
+      <section id="envio" class="upload-panel">
+        <div class="upload-copy"><p class="eyebrow">MEMÓRIAS COMPARTILHADAS</p><h3>Tem uma foto especial?</h3><p>Envie fotos, vídeos, áudios ou outros arquivos para este álbum. Depois do envio, eles aparecerão na galeria automaticamente.</p><p class="upload-hint">Qualquer formato (fotos de qualquer câmera, MP4, MP3…), até 50 MB cada (fotos grandes são reduzidas automaticamente). Evite enviar conteúdo sem autorização dos responsáveis.</p></div>
+        <form id="upload-form">
+          <label class="file-drop" for="photo-files"><span class="upload-icon">↑</span><strong>Escolher arquivos</strong><span>Qualquer tipo de arquivo — um ou vários</span><input id="photo-files" name="photos" type="file" multiple required></label>
+          <label class="field-label" for="uploader-name">Seu nome (opcional)</label>
+          <input id="uploader-name" class="text-input" type="text" maxlength="60" placeholder="Como podemos te chamar?">
+          <label class="field-label" for="photo-caption">Legenda (opcional)</label>
+          <input id="photo-caption" class="text-input" type="text" maxlength="120" placeholder="Ex.: Vovó e o Nathanael no chá de bebê">
+          <p class="upload-hint caption-hint">Se enviar várias fotos de uma vez, a mesma legenda vale para todas.</p>
+          <button class="primary-button submit-button" type="submit">Enviar arquivos <span aria-hidden="true">↗</span></button>
+          <div id="upload-progress" class="progress hidden"><span></span></div>
+          <p id="upload-status" class="upload-status" role="status"></p>
+        </form>
+      </section>
+    </section>
+
+    <section id="sobre" class="about-strip"><span class="about-heart">♡</span><div><h3>Memórias feitas em família</h3><p>Um lugar para guardar momentos que merecem ser lembrados com carinho.</p></div></section>
+  </main>
+
+  <footer><span>© <span id="year"></span> Memórias do Nathanael</span><span>Feito com carinho <span class="footer-heart">♥</span></span></footer>
+
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Visualizador de fotos">
+    <button id="close-lightbox" class="lightbox-close" aria-label="Fechar" type="button">×</button>
+    <button id="prev-photo" class="lightbox-nav prev" aria-label="Foto anterior" type="button">‹</button>
+    <figure><img id="lightbox-image" alt="Foto do Nathanael"><video id="lightbox-video" class="hidden" controls playsinline></video><audio id="lightbox-audio" class="hidden" controls></audio><p id="lightbox-file" class="lightbox-file hidden">Este formato não abre no navegador, mas você pode baixar o arquivo abaixo.</p><figcaption id="lightbox-caption"></figcaption><a id="download-photo" class="download-button" href="#" download>Baixar esta foto ↓</a></figure>
+    <button id="next-photo" class="lightbox-nav next" aria-label="Próxima foto" type="button">›</button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script src="dados.js"></script>
+  <script src="local-fotos.js"></script>
+  <script src="fotos.js"></script>
+</body>
+</html>

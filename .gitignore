@@ -1,0 +1,30 @@
+# Fotos originais e pastas pesadas (não precisam ir pro repositório)
+Fotos/
+originais heic/
+*.heic
+*.heif
+*.HEIC
+*.HEIF
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Segredos e variáveis locais
+.env
+.env.*
+*.key
+
+# Logs e temporários
+*.log
+*.tmp
+node_modules/
