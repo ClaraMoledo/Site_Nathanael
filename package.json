@@ -11,10 +11,12 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@neondatabase/neon-js": "^0.8.0-beta",
     "@neondatabase/serverless": "^1.2.0",
     "archiver": "^7.0.1",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "react-router-dom": "^7.18.4"
   }
 }
