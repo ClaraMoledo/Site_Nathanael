@@ -176,34 +176,6 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.get('/api/health/db', async (_req, res) => {
-  try {
-    const { rows } = await pool.query(`
-      SELECT
-        current_database() AS banco,
-        current_schema() AS schema,
-        current_user AS usuario,
-        to_regclass('public.albums') IS NOT NULL AS tabela_existe
-    `);
-
-    res.json({
-      status: 'conectado',
-      ...rows[0]
-    });
-  } catch (error) {
-    console.error('ERRO NEON PRODUCAO:', {
-      message: error.message,
-      code: error.code,
-      name: error.name
-    });
-
-    res.status(503).json({
-      status: 'erro',
-      codigo: error.code || 'SEM_CODIGO'
-    });
-  }
-});
-
 app.use(express.static(PUBLIC_DIR, { dotfiles: 'ignore', maxAge: '1h' }));
 
 export default app; // a Vercel usa este export
