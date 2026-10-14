@@ -15,6 +15,18 @@ const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 5 });
 const UUID = /^[0-9a-f-]{36}$/i;
 const fileUrl = (id) => `/api/photos/${id}/file`;
 const safeName = (n) => String(n).normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
+
+pool.query(`
+  SELECT
+    current_database() AS banco,
+    current_schema() AS schema,
+    current_user AS usuario,
+    current_setting('search_path') AS search_path,
+    to_regclass('public.albums') AS tabela_albums
+`).then(({ rows }) => {
+  console.log('DIAGNÓSTICO NEON:', rows[0]);
+}).catch(console.error);
+
 const kindOf = (mime, name) => {
   const ext = (String(name).match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase() || '';
   if (mime.startsWith('video/') || ['mp4','mov','m4v','webm','3gp','avi','mkv'].includes(ext)) return 'video';
@@ -156,6 +168,13 @@ app.get('/api/albums/:slug/download', h(async (req, res) => {
   }
   await zip.finalize();
 }));
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'site-nathanael'
+  });
+});
 
 app.use(express.static(PUBLIC_DIR, { dotfiles: 'ignore', maxAge: '1h' }));
 
