@@ -11,6 +11,10 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="premium.css">
+  <!-- NOVO -->
+  <link rel="stylesheet" href="extra.css">
+  <!-- NOVO -->
+  <script>try{var t=localStorage.getItem("tema")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
   <header class="topbar">
@@ -18,7 +22,14 @@
       <span class="brand-mark">N</span>
       <span><strong>Nathanael</strong><small>memórias para guardar</small></span>
     </a>
-    <a class="top-link" href="#sobre">Sobre a galeria <span aria-hidden="true">↗</span></a>
+    <!-- NOVO: tudo dentro desta div -->
+    <div class="top-actions">
+      <span id="user-chip" class="user-chip hidden"></span>
+      <button id="users-open" class="ghost-button small-btn admin-only" type="button">Acessos</button>
+      <button id="logout" class="ghost-button small-btn" type="button">Sair</button>
+      <a class="top-link" href="#sobre">Sobre a galeria <span aria-hidden="true">↗</span></a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Alternar entre modo claro e noturno" title="Modo claro / noturno"><span class="sun" aria-hidden="true">☀</span><span class="moon" aria-hidden="true">☾</span></button>
+    </div>
   </header>
 
   <main>
@@ -48,12 +59,14 @@
       <div class="album-toolbar">
         <button id="back-button" class="text-button" type="button">← Todos os álbuns</button>
         <div><p class="eyebrow">ÁLBUM SELECIONADO</p><h2 id="album-title">Álbum</h2><p id="album-description" class="section-intro"></p></div>
-        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><a id="upload-link" class="primary-button small-button" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
+        <!-- NOVO: "admin-only" no botão Adicionar fotos -->
+        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><a id="upload-link" class="primary-button small-button admin-only" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
       </div>
       <div id="photo-grid" class="photo-grid"></div>
       <p id="empty-photos" class="empty-state hidden">Este álbum ainda não tem fotos. Você pode ser a primeira pessoa a adicionar uma memória. 💚</p>
 
-      <section id="envio" class="upload-panel">
+      <!-- NOVO: "admin-only" na área de envio -->
+      <section id="envio" class="upload-panel admin-only">
         <div class="upload-copy"><p class="eyebrow">MEMÓRIAS COMPARTILHADAS</p><h3>Tem uma foto especial?</h3><p>Envie fotos, vídeos, áudios ou outros arquivos para este álbum. Depois do envio, eles aparecerão na galeria automaticamente.</p><p class="upload-hint">Qualquer formato (fotos de qualquer câmera, MP4, MP3…), até 50 MB cada (fotos grandes são reduzidas automaticamente). Evite enviar conteúdo sem autorização dos responsáveis.</p></div>
         <form id="upload-form">
           <label class="file-drop" for="photo-files"><span class="upload-icon">↑</span><strong>Escolher arquivos</strong><span>Qualquer tipo de arquivo — um ou vários</span><input id="photo-files" name="photos" type="file" multiple required></label>
@@ -77,9 +90,30 @@
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Visualizador de fotos">
     <button id="close-lightbox" class="lightbox-close" aria-label="Fechar" type="button">×</button>
     <button id="prev-photo" class="lightbox-nav prev" aria-label="Foto anterior" type="button">‹</button>
-    <figure><img id="lightbox-image" alt="Foto do Nathanael"><video id="lightbox-video" class="hidden" controls playsinline></video><audio id="lightbox-audio" class="hidden" controls></audio><p id="lightbox-file" class="lightbox-file hidden">Este formato não abre no navegador, mas você pode baixar o arquivo abaixo.</p><figcaption id="lightbox-caption"></figcaption><a id="download-photo" class="download-button" href="#" download>Baixar esta foto ↓</a></figure>
+    <!-- NOVO: botão Apagar foto (só admin), junto do botão de baixar -->
+    <figure><img id="lightbox-image" alt="Foto do Nathanael"><video id="lightbox-video" class="hidden" controls playsinline></video><audio id="lightbox-audio" class="hidden" controls></audio><p id="lightbox-file" class="lightbox-file hidden">Este formato não abre no navegador, mas você pode baixar o arquivo abaixo.</p><figcaption id="lightbox-caption"></figcaption><div class="lightbox-actions"><a id="download-photo" class="download-button" href="#" download>Baixar esta foto ↓</a><button id="delete-photo" class="danger-button admin-only" type="button">Apagar foto 🗑</button></div></figure>
     <button id="next-photo" class="lightbox-nav next" aria-label="Próxima foto" type="button">›</button>
   </div>
+
+  <!-- NOVO: janela para o administrador cadastrar quem pode entrar -->
+  <div id="users-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Gerenciar acessos">
+    <div class="modal-card">
+      <button id="users-close" class="modal-close" aria-label="Fechar" type="button">×</button>
+      <h3>Acessos ao site</h3>
+      <p class="upload-hint">Só quem estiver aqui consegue entrar. Convidados veem e baixam fotos; administradores também enviam e apagam.</p>
+      <ul id="users-list" class="users-list"></ul>
+      <form id="user-form" class="user-form">
+        <h4>Adicionar ou atualizar uma pessoa</h4>
+        <input id="u-name" class="text-input" type="text" placeholder="Nome" maxlength="60">
+        <input id="u-email" class="text-input" type="email" placeholder="E-mail" required>
+        <input id="u-pass" class="text-input" type="text" placeholder="Senha (mín. 6 caracteres; vazio mantém a atual)" autocomplete="off">
+        <select id="u-role" class="text-input"><option value="convidado">Convidado (só vê e baixa)</option><option value="admin">Administrador</option></select>
+        <button class="primary-button" type="submit">Salvar</button>
+        <p id="user-status" class="upload-status" role="status"></p>
+      </form>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
   <script src="dados.js"></script>
   <script src="local-fotos.js"></script>

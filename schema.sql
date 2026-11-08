@@ -40,6 +40,12 @@ create table if not exists photo_chunks (
 );
 
 insert into albums (slug, title, description, event_date, icon, sort_order) values
+ ('comeco_de_tudo',   'O Começo de Tudo','O dia em que descobrimos que ele estava a caminho.',   null, '✨', 0),
  ('cha_de_bebe', 'Chá de Bebê', 'Nosso pequeno aventureiro está chegando. Com muito amor e alegria, celebramos junto de pessoas especiais!', '2026-10-11', '♡', 1),
- ('nascimento_bebe', 'Nascimento do Bebê', 'Aguardando...', null, '❔', 2)
+ ('nascimento_bebe', 'Nascimento do Bebê', 'Aguardando...', null, '❔', 2), 
+ ('primeiro_ano','O Primeiro Ano','Um ano inteiro de descobertas.', null, '🌱', 3),
+ ('primeiro_aniversario','O Primeiro Aniversário','A primeira grande festa do nosso pequeno.', null, '🎉', 4),
+ ('viagens_passeios', 'Viagens e Passeios',      'Por onde o Nathanael já passou.',                      null, '🌿', 5),
+
 on conflict (slug) do nothing;
+
