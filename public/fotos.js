@@ -2,9 +2,10 @@
   "use strict";
   const cfg = window.NATHANAEL_CONFIG || {}, API = (cfg.API_BASE || "") + "/api", MAX_MB = cfg.MAX_MB || 200;
   const $ = (s) => document.querySelector(s);
+  const root = document.documentElement;
   const grid = $("#album-grid"), statusEl = $("#status"), albumView = $("#album-view"), photoGrid = $("#photo-grid"), emptyEl = $("#empty-photos");
   const lb = $("#lightbox"), lbImg = $("#lightbox-image"), lbVideo = $("#lightbox-video"), lbAudio = $("#lightbox-audio"), lbFile = $("#lightbox-file");
-  let albums = [], active = null, photos = [], idx = 0;
+  let albums = [], active = null, photos = [], idx = 0, me = null;
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const extOf = (n) => (String(n || "").split(/[?#]/)[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase() || "";
@@ -15,12 +16,12 @@
     if (["mp3", "m4a", "aac", "wav", "ogg", "opus", "flac", "amr"].includes(e)) return "audio";
     return ["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "heic", "heif", "tif", "tiff", "dng"].includes(e) ? "image" : "other";
   };
-  const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
   const fmtDate = (v) => {
     if (!v) return "";
     const d = new Date(`${String(v).slice(0, 10)}T12:00:00`);
     return isNaN(d) ? "" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).format(d);
   };
+
   // ---- HEIC: o navegador não exibe, então convertemos para JPG (heic2any) ----
   const isHeic = (n) => ["heic", "heif"].includes(extOf(n));
   const jpgCache = new Map();
@@ -42,9 +43,11 @@
     heicToJpgUrl(img.dataset.src).then((u) => { img.src = u; img.classList.add("loaded"); }).catch(() => img.replaceWith(Object.assign(document.createElement("span"), { className: "file-placeholder", innerHTML: "<b>▣</b><small>HEIC</small>" })));
   }), { rootMargin: "200px" });
 
+  // Se a sessão acabar (401), volta para a tela de login
   async function api(path, opts) {
     const r = await fetch(API + path, opts);
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401) { location.href = "/login.html"; throw new Error(data.erro || "Sessão expirada."); }
     if (!r.ok) throw new Error(data.erro || "Falha na comunicação com o servidor.");
     return data;
   }
@@ -52,7 +55,7 @@
   function localPhotos(album) {
     const cat = window.NATHANAEL_FOTOS_LOCAIS || {};
     const list = cat[album.slug] || cat[String(album.slug).replace(/_/g, "-")] || [];
-    return list.map((p, i) => (typeof p === "string" ? { url: p } : p)).map((p, i) => ({
+    return list.map((p) => (typeof p === "string" ? { url: p } : p)).map((p) => ({
       url: p.url, download: p.original_url || p.url, caption: p.caption || "", kind: kindOf(p.url), name: p.url.split("/").pop(), local: true,
     }));
   }
@@ -131,6 +134,7 @@
     } else { lbFile.textContent = "Este formato não abre no navegador, mas você pode baixar o arquivo abaixo."; lbFile.classList.remove("hidden"); }
     $("#lightbox-caption").textContent = [p.caption, p.by && `por ${p.by}`, `${idx + 1} de ${photos.length}`].filter(Boolean).join(" · ");
     const a = $("#download-photo"); a.href = p.download; a.setAttribute("download", p.name || "nathanael");
+    $("#delete-photo").classList.toggle("hidden", !!p.local); // fotos locais (da pasta) não podem ser apagadas por aqui
     lb.classList.remove("hidden"); document.body.style.overflow = "hidden";
   }
   function stopMedia() { [lbVideo, lbAudio].forEach((m) => { m.pause(); m.removeAttribute("src"); m.load(); }); lbImg.removeAttribute("src"); }
@@ -144,6 +148,21 @@
     if (e.key === "Escape") closeLb(); if (e.key === "ArrowLeft") show(idx - 1); if (e.key === "ArrowRight") show(idx + 1);
   });
   $("#back-button").addEventListener("click", () => { albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden"); $("#albuns").scrollIntoView({ behavior: "smooth" }); loadAlbums(); });
+
+  // ---- Apagar foto (só administrador; o servidor também confere) ----
+  $("#delete-photo").addEventListener("click", async () => {
+    const p = photos[idx], btn = $("#delete-photo");
+    if (!p || p.local || !p.id) return;
+    if (!confirm(`Apagar "${p.name || "este arquivo"}" para sempre?\nNão dá para desfazer.`)) return;
+    btn.disabled = true;
+    try {
+      await api(`/photos/${p.id}`, { method: "DELETE" });
+      photos.splice(idx, 1);
+      renderPhotos();
+      if (photos.length) show(Math.min(idx, photos.length - 1)); else closeLb();
+    } catch (e) { alert(e.message); }
+    btn.disabled = false;
+  });
 
   // ---- Envio: o arquivo vai em pedaços de 3 MB direto para o Postgres (Neon) ----
   const putChunk = (url, blob, onProgress) => new Promise((ok, fail) => {
@@ -165,7 +184,7 @@
       const c = Object.assign(document.createElement("canvas"), { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) });
       c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
       const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88));
-      return blob && blob.size < file.size ? new File([blob], file.name.replace(/.(png|webp|jpe?g)$/i, ".jpg"), { type: "image/jpeg" }) : file;
+      return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.(png|webp|jpe?g)$/i, ".jpg"), { type: "image/jpeg" }) : file;
     } catch (e) { console.error(e); return file; }
   };
 
@@ -201,6 +220,77 @@
     btn.disabled = false; btn.innerHTML = 'Enviar arquivos <span aria-hidden="true">↗</span>'; bar.classList.add("hidden"); fill.style.width = "0";
   });
 
-  $("#year").textContent = new Date().getFullYear();
-  loadAlbums();
+  // ---- Modo claro / noturno ----
+  $("#theme-toggle").addEventListener("click", () => {
+    const novo = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = novo;
+    try { localStorage.setItem("tema", novo); } catch (e) { /* sem armazenamento: tudo bem */ }
+  });
+
+  // ---- Sair ----
+  $("#logout").addEventListener("click", async () => {
+    try { await api("/logout", { method: "POST" }); } catch (e) { /* segue para o login mesmo assim */ }
+    location.href = "/login.html";
+  });
+
+  // ---- Acessos (só administrador): quem pode entrar no site ----
+  const modal = $("#users-modal"), usersList = $("#users-list"), userStatus = $("#user-status");
+  const uName = $("#u-name"), uEmail = $("#u-email"), uPass = $("#u-pass"), uRole = $("#u-role");
+
+  async function loadUsers() {
+    usersList.innerHTML = "<li>Carregando…</li>";
+    try {
+      const list = await api("/usuarios");
+      usersList.innerHTML = "";
+      list.forEach((u) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<div class="u-info"><strong>${esc(u.name || u.email)}</strong><small>${esc(u.email)} · ${u.role === "admin" ? "Administrador" : "Convidado"}</small></div>
+          <div class="u-actions"><button type="button" class="ghost-button small-btn" data-edit>Editar</button>${u.id === me.id ? "" : '<button type="button" class="danger-button small-btn" data-del>Remover</button>'}</div>`;
+        li.querySelector("[data-edit]").addEventListener("click", () => {
+          uName.value = u.name || ""; uEmail.value = u.email; uPass.value = ""; uRole.value = u.role; uPass.focus();
+          userStatus.textContent = "Editando. Deixe a senha vazia para manter a atual.";
+        });
+        const del = li.querySelector("[data-del]");
+        if (del) del.addEventListener("click", async () => {
+          if (!confirm(`Remover o acesso de ${u.name || u.email}?`)) return;
+          try { await api(`/usuarios/${u.id}`, { method: "DELETE" }); loadUsers(); } catch (e) { userStatus.textContent = e.message; }
+        });
+        usersList.appendChild(li);
+      });
+    } catch (e) { usersList.innerHTML = `<li>${esc(e.message)}</li>`; }
+  }
+  const openUsers = () => { userStatus.textContent = ""; modal.classList.remove("hidden"); loadUsers(); };
+  const closeUsers = () => modal.classList.add("hidden");
+  $("#users-open").addEventListener("click", openUsers);
+  $("#users-close").addEventListener("click", closeUsers);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeUsers(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.classList.contains("hidden")) closeUsers(); });
+  $("#user-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    userStatus.textContent = "Salvando…";
+    try {
+      await api("/usuarios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome: uName.value, email: uEmail.value, senha: uPass.value, role: uRole.value }) });
+      userStatus.textContent = "Salvo! 💚";
+      uName.value = ""; uEmail.value = ""; uPass.value = ""; uRole.value = "convidado";
+      loadUsers();
+    } catch (e) { userStatus.textContent = e.message; }
+  });
+
+  // ---- Início: confere o login antes de mostrar qualquer coisa ----
+  async function iniciar() {
+    $("#year").textContent = new Date().getFullYear();
+    try {
+      me = await api("/me");
+    } catch (e) {
+      // 401 já redirecionou para o login; outro erro (servidor fora do ar) cai no modo prévia
+      console.error(e); root.classList.add("logado"); loadAlbums(); return;
+    }
+    root.classList.toggle("is-admin", me.role === "admin");
+    root.classList.add("logado");
+    const chip = $("#user-chip");
+    chip.textContent = `${me.name || me.email} · ${me.role === "admin" ? "Administrador" : "Convidado"}`;
+    chip.classList.remove("hidden");
+    loadAlbums();
+  }
+  iniciar();
 })();
