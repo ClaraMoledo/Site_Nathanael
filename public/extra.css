@@ -227,6 +227,13 @@ footer { font-size: 12px; color: var(--suave); border-top: 1px solid var(--borda
 .user-form h4 { margin: 0; font-size: 16px; color: var(--titulo); }
 .user-form .upload-status { margin: 0; }
 
+/* Pedidos de acesso aguardando aprovação */
+.u-tag {
+  display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+  background: var(--fundo2); border: 1px solid var(--destaque); color: var(--destaque); font-size: 12px; font-weight: 700;
+}
+.tem-pendente { background: var(--destaque); color: var(--sobre-destaque); }
+
 /* 5. Login
    ========================================================================== */
 .login-page {
@@ -246,6 +253,7 @@ footer { font-size: 12px; color: var(--suave); border-top: 1px solid var(--borda
 .pass-row .text-input { flex: 1; min-width: 0; }
 .login-submit { width: 100%; margin-top: 18px; padding: 15px; }
 .login-card .upload-status { min-height: 1.5em; margin: 12px 0 0; color: var(--erro); font-weight: 600; }
+html .login-card .upload-status.ok { color: var(--destaque); }
 .login-note { margin: 8px 0 0; font-size: 13px; color: var(--suave); }
 
 /* 6. Responsivo (celular, tablet e computador)

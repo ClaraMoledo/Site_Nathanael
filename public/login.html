@@ -19,34 +19,68 @@
     <form id="login-form" class="login-card" autocomplete="on">
       <span class="brand-mark login-mark">N</span>
       <h1>Memórias do Nathanael</h1>
-      <p class="login-sub">Entre com seu e-mail e senha para ver as fotos da família.</p>
+      <p id="login-sub" class="login-sub">Entre com seu e-mail e senha para ver as fotos da família.</p>
+
+      <label class="field-label cadastro-only hidden" for="nome">Seu nome</label>
+      <input id="nome" class="text-input cadastro-only hidden" type="text" maxlength="60" autocomplete="name">
+
       <label class="field-label" for="email">E-mail</label>
       <input id="email" class="text-input" type="email" autocomplete="username" inputmode="email" required>
+
       <label class="field-label" for="senha">Senha</label>
       <div class="pass-row">
         <input id="senha" class="text-input" type="password" autocomplete="current-password" required>
         <button id="ver-senha" class="ghost-button small-btn" type="button">Mostrar</button>
       </div>
-      <button class="primary-button login-submit" type="submit">Entrar <span aria-hidden="true">→</span></button>
+
+      <button id="enviar" class="primary-button login-submit" type="submit"><span id="enviar-texto">Entrar</span> <span aria-hidden="true">→</span></button>
       <p id="msg" class="upload-status" role="alert"></p>
-      <p class="login-note">Não tem acesso? Peça para o administrador cadastrar o seu e-mail.</p>
+      <p class="login-note"><span id="troca-texto">Primeira vez aqui?</span> <button id="troca" class="text-button" type="button">Pedir acesso</button></p>
     </form>
   </main>
   <script>
     const f = document.getElementById("login-form"), msg = document.getElementById("msg"), senha = document.getElementById("senha");
+    const extras = document.querySelectorAll(".cadastro-only"), btn = document.getElementById("enviar");
+    let cadastro = false;
+
     fetch("/api/me").then((r) => { if (r.ok) location.href = "/"; }).catch(() => {});
+
     document.getElementById("ver-senha").addEventListener("click", (e) => {
       const mostrar = senha.type === "password"; senha.type = mostrar ? "text" : "password"; e.target.textContent = mostrar ? "Ocultar" : "Mostrar";
     });
+
+    function modo(novo) {
+      cadastro = novo; msg.textContent = ""; msg.classList.remove("ok");
+      extras.forEach((el) => el.classList.toggle("hidden", !cadastro));
+            senha.autocomplete = cadastro ? "new-password" : "current-password";
+      document.getElementById("login-sub").textContent = cadastro
+        ? "Peça seu acesso. Assim que for aprovado, você poderá entrar."
+        : "Entre com seu e-mail e senha para ver as fotos da família.";
+      document.getElementById("enviar-texto").textContent = cadastro ? "Pedir acesso" : "Entrar";
+      document.getElementById("troca-texto").textContent = cadastro ? "Já tem conta?" : "Primeira vez aqui?";
+      document.getElementById("troca").textContent = cadastro ? "Entrar" : "Pedir acesso";
+    }
+    document.getElementById("troca").addEventListener("click", () => modo(!cadastro));
+
     f.addEventListener("submit", async (ev) => {
       ev.preventDefault(); msg.textContent = "";
-      const btn = f.querySelector(".login-submit"); btn.disabled = true;
+      btn.disabled = true;
       try {
-        const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: f.email.value, senha: senha.value }) });
+        const corpo = cadastro
+          ? { nome: f.nome.value, email: f.email.value, senha: senha.value }
+          : { email: f.email.value, senha: senha.value };
+        const r = await fetch(cadastro ? "/api/cadastro" : "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.erro || "Não foi possível entrar.");
+        if (!r.ok) throw new Error(d.erro || "Não foi possível continuar.");
+        if (d.pendente) {
+          modo(false); f.reset();
+          msg.classList.add("ok");
+          msg.textContent = "Pedido enviado! Assim que o administrador aprovar, você já pode entrar com seu e-mail e senha.";
+          btn.disabled = false;
+          return;
+        }
         location.href = "/";
-      } catch (e) { msg.textContent = e.message; btn.disabled = false; }
+      } catch (e) { msg.classList.remove("ok"); msg.textContent = e.message; btn.disabled = false; }
     });
   </script>
 </body>

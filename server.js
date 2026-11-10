@@ -70,13 +70,14 @@ async function iniciaBanco() {
     role          text not null default 'convidado' check (role in ('admin','convidado')),
     created_at    timestamptz not null default now()
   )`);
+  await pool.query('alter table users add column if not exists approved boolean not null default true'); // quem já existia continua aprovado
   const email = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
   if (email && env.ADMIN_SENHA) {
     const { rowCount } = await pool.query("select 1 from users where role='admin' limit 1");
     if (!rowCount) {
       await pool.query(
         `insert into users (email, name, password_hash, role) values ($1, $2, $3, 'admin')
-         on conflict (email) do update set role='admin', password_hash=excluded.password_hash`,
+         on conflict (email) do update set role='admin', approved=true, password_hash=excluded.password_hash`,
         [email, String(env.ADMIN_NOME || 'Administrador').slice(0, 60), await hashSenha(String(env.ADMIN_SENHA))]);
       console.log('Administrador criado:', email);
     }
@@ -101,7 +102,7 @@ const limit = (req, res, next) => {
 };
 
 // Páginas e arquivos que qualquer pessoa pode abrir (só o necessário para a tela de login)
-const PUBLICO = new Set(['/login.html', '/style.css', '/premium.css', '/extra.css', '/api/login', '/api/logout', '/api/health']);
+const PUBLICO = new Set(['/login.html', '/style.css', '/premium.css', '/extra.css', '/api/login', '/api/cadastro', '/api/logout', '/api/health']);
 app.use((req, res, next) => {
   if (PUBLICO.has(req.path)) return next();
   const sessao = leToken(lerCookies(req)[COOKIE]);
@@ -118,12 +119,31 @@ app.post('/api/login', h(async (req, res) => {
   const agora = Date.now(), lista = (falhas.get(req.ip) || []).filter((t) => agora - t < 9e5);
   if (lista.length >= 10) return res.status(429).json({ erro: 'Muitas tentativas. Aguarde alguns minutos.' });
   const email = String(req.body?.email || '').trim().toLowerCase(), senha = String(req.body?.senha || '');
-  const u = (await pool.query('select id, name, role, password_hash from users where email=$1', [email])).rows[0];
+  const u = (await pool.query('select id, name, role, approved, password_hash from users where email=$1', [email])).rows[0];
   const ok = u && senha && (await confereSenha(senha, u.password_hash));
   if (!ok) { lista.push(agora); falhas.set(req.ip, lista); return res.status(401).json({ erro: 'E-mail ou senha incorretos.' }); }
+  if (!u.approved) return res.status(403).json({ erro: 'Seu cadastro ainda está aguardando aprovação. Você poderá entrar assim que for aprovado.' });
   falhas.delete(req.ip);
   gravaCookie(req, res, criaToken(u.id), DIAS * 86400);
   res.json({ ok: true, nome: u.name, role: u.role });
+}));
+
+// Cadastro aberto: qualquer pessoa pede acesso, mas só entra depois que o administrador aprovar
+const cadastros = new Map(); // 5 pedidos por hora por IP
+app.post('/api/cadastro', h(async (req, res) => {
+  const agora = Date.now(), lista = (cadastros.get(req.ip) || []).filter((t) => agora - t < 36e5);
+  if (lista.length >= 5) return res.status(429).json({ erro: 'Muitos pedidos seguidos. Tente novamente mais tarde.' });
+  const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
+  const nome = String(req.body?.nome || '').trim().slice(0, 60);
+  const senha = String(req.body?.senha || '');
+  if (nome.length < 2) return res.status(400).json({ erro: 'Informe o seu nome para o administrador saber quem é.' });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ erro: 'E-mail inválido.' });
+  if (senha.length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
+  const existente = (await pool.query('select approved from users where email=$1', [email])).rows[0];
+  if (existente) return res.status(409).json({ erro: existente.approved ? 'Este e-mail já tem cadastro. Use "Entrar".' : 'Este e-mail já pediu acesso e está aguardando aprovação.' });
+  await pool.query("insert into users (email, name, password_hash, role, approved) values ($1,$2,$3,'convidado',false)", [email, nome, await hashSenha(senha)]);
+  lista.push(agora); cadastros.set(req.ip, lista);
+  res.status(201).json({ ok: true, pendente: true });
 }));
 
 app.post('/api/logout', (req, res) => { gravaCookie(req, res, '', 0); res.json({ ok: true }); });
@@ -134,8 +154,8 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'site-na
 const precisaUsuario = async (req, res, next) => {
   try {
     if (!req.sessao) return next();
-    const u = (await pool.query('select id, email, name, role from users where id=$1', [req.sessao.uid])).rows[0];
-    if (!u) { gravaCookie(req, res, '', 0); return res.status(401).json({ erro: 'Sessão expirada. Entre novamente.' }); }
+    const u = (await pool.query('select id, email, name, role, approved from users where id=$1', [req.sessao.uid])).rows[0];
+    if (!u || !u.approved) { gravaCookie(req, res, '', 0); return res.status(401).json({ erro: 'Sessão expirada. Entre novamente.' }); }
     req.usuario = u;
     next();
   } catch (e) { next(e); }
@@ -147,7 +167,7 @@ app.get('/api/me', (req, res) => res.json(req.usuario));
 
 /* ======================== GERENCIAR ACESSOS (ADMIN) ======================== */
 app.get('/api/usuarios', soAdmin, h(async (_req, res) => {
-  const { rows } = await pool.query('select id, email, name, role from users order by role, lower(name), email');
+  const { rows } = await pool.query('select id, email, name, role, approved from users order by approved, role, lower(name), email');
   res.json(rows);
 }));
 
@@ -165,11 +185,11 @@ app.post('/api/usuarios', soAdmin, h(async (req, res) => {
     if (c.n <= 1) return res.status(400).json({ erro: 'Precisa existir pelo menos um administrador.' });
   }
   if (!atual) {
-    await pool.query('insert into users (email, name, password_hash, role) values ($1,$2,$3,$4)', [email, nome, await hashSenha(senha), role]);
+    await pool.query('insert into users (email, name, password_hash, role, approved) values ($1,$2,$3,$4,true)', [email, nome, await hashSenha(senha), role]);
   } else if (senha) {
-    await pool.query("update users set name=coalesce(nullif($2,''), name), role=$3, password_hash=$4 where id=$1", [atual.id, nome, role, await hashSenha(senha)]);
+    await pool.query("update users set name=coalesce(nullif($2,''), name), role=$3, approved=true, password_hash=$4 where id=$1", [atual.id, nome, role, await hashSenha(senha)]);
   } else {
-    await pool.query("update users set name=coalesce(nullif($2,''), name), role=$3 where id=$1", [atual.id, nome, role]);
+    await pool.query("update users set name=coalesce(nullif($2,''), name), role=$3, approved=true where id=$1", [atual.id, nome, role]);
   }
   res.json({ ok: true });
 }));
@@ -178,6 +198,13 @@ app.delete('/api/usuarios/:id', soAdmin, h(async (req, res) => {
   if (!UUID.test(req.params.id)) return res.status(400).json({ erro: 'Dados inválidos.' });
   if (req.params.id === req.usuario.id) return res.status(400).json({ erro: 'Você não pode remover o seu próprio acesso.' });
   const { rowCount } = await pool.query('delete from users where id=$1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ erro: 'Pessoa não encontrada.' });
+  res.json({ ok: true });
+}));
+
+app.post('/api/usuarios/:id/aprovar', soAdmin, h(async (req, res) => {
+  if (!UUID.test(req.params.id)) return res.status(400).json({ erro: 'Dados inválidos.' });
+  const { rowCount } = await pool.query('update users set approved=true where id=$1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ erro: 'Pessoa não encontrada.' });
   res.json({ ok: true });
 }));

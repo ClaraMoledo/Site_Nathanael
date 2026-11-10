@@ -237,22 +237,33 @@
   const modal = $("#users-modal"), usersList = $("#users-list"), userStatus = $("#user-status");
   const uName = $("#u-name"), uEmail = $("#u-email"), uPass = $("#u-pass"), uRole = $("#u-role");
 
+  const setBadge = (list) => {
+    const n = list.filter((u) => !u.approved).length;
+    const b = $("#users-open");
+    b.textContent = n ? `Acessos (${n})` : "Acessos";
+    b.classList.toggle("tem-pendente", n > 0);
+  };
+
   async function loadUsers() {
     usersList.innerHTML = "<li>Carregando…</li>";
     try {
       const list = await api("/usuarios");
+      setBadge(list);
       usersList.innerHTML = "";
       list.forEach((u) => {
-        const li = document.createElement("li");
-        li.innerHTML = `<div class="u-info"><strong>${esc(u.name || u.email)}</strong><small>${esc(u.email)} · ${u.role === "admin" ? "Administrador" : "Convidado"}</small></div>
-          <div class="u-actions"><button type="button" class="ghost-button small-btn" data-edit>Editar</button>${u.id === me.id ? "" : '<button type="button" class="danger-button small-btn" data-del>Remover</button>'}</div>`;
-        li.querySelector("[data-edit]").addEventListener("click", () => {
+        const pendente = !u.approved, li = document.createElement("li");
+        li.innerHTML = `<div class="u-info"><strong>${esc(u.name || u.email)}</strong><small>${esc(u.email)} · ${u.role === "admin" ? "Administrador" : "Convidado"}</small>${pendente ? '<span class="u-tag">Aguardando aprovação</span>' : ""}</div>
+          <div class="u-actions">${pendente ? '<button type="button" class="ghost-button small-btn" data-ok>Aprovar</button>' : '<button type="button" class="ghost-button small-btn" data-edit>Editar</button>'}${u.id === me.id ? "" : `<button type="button" class="danger-button small-btn" data-del>${pendente ? "Recusar" : "Remover"}</button>`}</div>`;
+        const ok = li.querySelector("[data-ok]"), edit = li.querySelector("[data-edit]"), del = li.querySelector("[data-del]");
+        if (ok) ok.addEventListener("click", async () => {
+          try { await api(`/usuarios/${u.id}/aprovar`, { method: "POST" }); loadUsers(); } catch (e) { userStatus.textContent = e.message; }
+        });
+        if (edit) edit.addEventListener("click", () => {
           uName.value = u.name || ""; uEmail.value = u.email; uPass.value = ""; uRole.value = u.role; uPass.focus();
           userStatus.textContent = "Editando. Deixe a senha vazia para manter a atual.";
         });
-        const del = li.querySelector("[data-del]");
         if (del) del.addEventListener("click", async () => {
-          if (!confirm(`Remover o acesso de ${u.name || u.email}?`)) return;
+          if (!confirm(`${pendente ? "Recusar o pedido de" : "Remover o acesso de"} ${u.name || u.email}?`)) return;
           try { await api(`/usuarios/${u.id}`, { method: "DELETE" }); loadUsers(); } catch (e) { userStatus.textContent = e.message; }
         });
         usersList.appendChild(li);
@@ -290,6 +301,7 @@
     const chip = $("#user-chip");
     chip.textContent = `${me.name || me.email} · ${me.role === "admin" ? "Administrador" : "Convidado"}`;
     chip.classList.remove("hidden");
+    if (me.role === "admin") api("/usuarios").then(setBadge).catch(() => {}); // mostra quantos pedidos esperam aprovação
     loadAlbums();
   }
   iniciar();
