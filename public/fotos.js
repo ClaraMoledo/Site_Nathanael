@@ -88,8 +88,9 @@
     return [...online, ...localPhotos(album)];
   }
 
-  async function openAlbum(album) {
+  async function openAlbum(album, push = true) {
     active = album;
+    if (push) history.pushState({ v: "album", slug: album.slug }, "", "?album=" + encodeURIComponent(album.slug)); // o botão voltar do celular/navegador volta para a lista
     $("#album-title").textContent = album.title;
     $("#album-description").textContent = [fmtDate(album.date), album.description].filter(Boolean).join(" · ");
     albumView.classList.remove("hidden"); $("#albuns").classList.add("hidden");
@@ -120,6 +121,7 @@
 
   function show(i) {
     if (!photos.length) return;
+    const abrindo = lb.classList.contains("hidden");
     idx = (i + photos.length) % photos.length;
     const p = photos[idx];
     stopMedia();
@@ -135,10 +137,38 @@
     $("#lightbox-caption").textContent = [p.caption, p.by && `por ${p.by}`, `${idx + 1} de ${photos.length}`].filter(Boolean).join(" · ");
     const a = $("#download-photo"); a.href = p.download; a.setAttribute("download", p.name || "nathanael");
     $("#delete-photo").classList.toggle("hidden", !!p.local); // fotos locais (da pasta) não podem ser apagadas por aqui
+    if (abrindo) history.pushState({ v: "photo", slug: active && active.slug }, "", location.href); // voltar fecha a foto
     lb.classList.remove("hidden"); document.body.style.overflow = "hidden";
   }
   function stopMedia() { [lbVideo, lbAudio].forEach((m) => { m.pause(); m.removeAttribute("src"); m.load(); }); lbImg.removeAttribute("src"); }
-  function closeLb() { lb.classList.add("hidden"); document.body.style.overflow = ""; stopMedia(); }
+  function closeLbUI() { lb.classList.add("hidden"); document.body.style.overflow = ""; stopMedia(); }
+  function closeLb() { if (history.state && history.state.v === "photo") history.back(); else closeLbUI(); }
+
+  // ---- Voltar (botão do navegador, gesto do celular ou a seta do site) ----
+  function mostraListaUI() {
+    albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden");
+    $("#albuns").scrollIntoView({ behavior: "smooth" }); loadAlbums();
+  }
+  function voltaParaLista() { if (history.state && history.state.v === "album") history.back(); else mostraListaUI(); }
+  window.addEventListener("popstate", (e) => {
+    const st = e.state || {};
+    if (!lb.classList.contains("hidden") && st.v !== "photo") closeLbUI();
+    if (st.v === "album" || st.v === "photo") {
+      if (!active || active.slug !== st.slug || albumView.classList.contains("hidden")) {
+        const alvo = albums.find((a) => a.slug === st.slug);
+        if (alvo) openAlbum(alvo, false);
+      }
+    } else if (!albumView.classList.contains("hidden")) mostraListaUI();
+  });
+
+  // Deslizar para o lado na foto aberta troca para a anterior/próxima
+  let tx = 0, ty = 0;
+  lb.addEventListener("touchstart", (e) => { tx = e.changedTouches[0].clientX; ty = e.changedTouches[0].clientY; }, { passive: true });
+  lb.addEventListener("touchend", (e) => {
+    if (e.target.closest && e.target.closest("video, audio")) return;
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) show(idx + (dx < 0 ? 1 : -1));
+  }, { passive: true });
   $("#close-lightbox").addEventListener("click", closeLb);
   $("#prev-photo").addEventListener("click", () => show(idx - 1));
   $("#next-photo").addEventListener("click", () => show(idx + 1));
@@ -147,7 +177,7 @@
     if (lb.classList.contains("hidden")) return;
     if (e.key === "Escape") closeLb(); if (e.key === "ArrowLeft") show(idx - 1); if (e.key === "ArrowRight") show(idx + 1);
   });
-  $("#back-button").addEventListener("click", () => { albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden"); $("#albuns").scrollIntoView({ behavior: "smooth" }); loadAlbums(); });
+  $("#back-button").addEventListener("click", voltaParaLista);
 
   // ---- Apagar foto (só administrador; o servidor também confere) ----
   $("#delete-photo").addEventListener("click", async () => {
@@ -331,8 +361,7 @@
     try {
       await api(`/albums/${encodeURIComponent(editando.slug)}`, { method: "DELETE" });
       closeAlbumModal();
-      albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden"); $("#albuns").scrollIntoView({ behavior: "smooth" });
-      loadAlbums();
+      voltaParaLista();
     } catch (e) { albumStatus.textContent = e.message; }
   });
 
@@ -351,7 +380,11 @@
     chip.textContent = `${me.name || me.email} · ${me.role === "admin" ? "Administrador" : "Convidado"}`;
     chip.classList.remove("hidden");
     if (me.role === "admin") api("/usuarios").then(setBadge).catch(() => {}); // mostra quantos pedidos esperam aprovação
-    loadAlbums();
+    await loadAlbums();
+    const pedido = new URLSearchParams(location.search).get("album");
+    const alvo = pedido && albums.find((a) => a.slug === pedido);
+    if (alvo) { history.replaceState({ v: "album", slug: alvo.slug }, "", location.href); openAlbum(alvo, false); }
+    else history.replaceState({ v: "list" }, "", location.pathname);
   }
   iniciar();
 })();
