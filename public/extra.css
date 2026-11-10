@@ -126,6 +126,9 @@ button.ghost-button { cursor: pointer; font: inherit; font-size: 13px; font-weig
 }
 .danger-button:hover { background: var(--erro); color: #fff; }
 .danger-button:disabled { opacity: .55; cursor: wait; }
+.lightbox .ghost-button { background: transparent; color: #bfe3cf; border-color: #bfe3cf; }
+.lightbox .ghost-button:hover { background: #bfe3cf; color: #0f2c23; }
+.lightbox .ghost-button:disabled { opacity: .7; cursor: default; }
 .lightbox .danger-button { background: #a93226; border-color: #a93226; color: #fff; }
 .lightbox .danger-button:hover { background: #c0392b; border-color: #c0392b; }
 

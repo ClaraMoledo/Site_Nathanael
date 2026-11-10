@@ -71,6 +71,7 @@ async function iniciaBanco() {
     created_at    timestamptz not null default now()
   )`);
   await pool.query('alter table users add column if not exists approved boolean not null default true'); // quem já existia continua aprovado
+  await pool.query('alter table albums add column if not exists cover_photo_id uuid references photos(id) on delete set null'); // capa escolhida pelo administrador
   const email = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
   if (email && env.ADMIN_SENHA) {
     const { rowCount } = await pool.query("select 1 from users where role='admin' limit 1");
@@ -253,7 +254,10 @@ async function sendFile(req, res, attachment) {
 app.get('/api/albums', h(async (_req, res) => {
   const { rows } = await pool.query(`
     select a.slug, a.title, a.description, a.event_date::text as date, a.icon, count(p.id)::int as photo_count,
-      (select id from photos where album_id=a.id and is_approved and is_complete and kind='image' order by created_at limit 1) as cover_id
+      coalesce(
+        (select id from photos where id=a.cover_photo_id and is_approved and is_complete and kind='image'),
+        (select id from photos where album_id=a.id and is_approved and is_complete and kind='image' order by created_at limit 1)
+      ) as cover_id
     from albums a left join photos p on p.album_id=a.id and p.is_approved and p.is_complete
     where a.is_active group by a.id order by a.sort_order, a.created_at`);
   res.json(rows.map(({ cover_id, ...a }) => ({ ...a, cover: cover_id ? fileUrl(cover_id) : '' })));
@@ -286,6 +290,19 @@ app.put('/api/albums/:slug', soAdmin, h(async (req, res) => {
   const { rowCount } = await pool.query(
     'update albums set title=$2, description=$3, event_date=$4, icon=$5 where slug=$1 and is_active', [req.params.slug, a.title, a.description, a.date, a.icon]);
   if (!rowCount) return res.status(404).json({ erro: 'Álbum não encontrado.' });
+  res.json({ ok: true });
+}));
+
+// Escolher a foto de capa do álbum (só administrador)
+app.put('/api/albums/:slug/cover', soAdmin, h(async (req, res) => {
+  const album = await getAlbum(req.params.slug);
+  if (!album) return res.status(404).json({ erro: 'Álbum não encontrado.' });
+  const photoId = String(req.body?.photoId || '');
+  if (!UUID.test(photoId)) return res.status(400).json({ erro: 'Dados inválidos.' });
+  const { rowCount } = await pool.query(
+    `update albums set cover_photo_id=$2
+     where id=$1 and exists (select 1 from photos where id=$2 and album_id=$1 and is_complete and is_approved and kind='image')`, [album.id, photoId]);
+  if (!rowCount) return res.status(400).json({ erro: 'Escolha uma foto deste álbum.' });
   res.json({ ok: true });
 }));
 

@@ -136,6 +136,9 @@
     } else { lbFile.textContent = "Este formato não abre no navegador, mas você pode baixar o arquivo abaixo."; lbFile.classList.remove("hidden"); }
     $("#lightbox-caption").textContent = [p.caption, p.by && `por ${p.by}`, `${idx + 1} de ${photos.length}`].filter(Boolean).join(" · ");
     const a = $("#download-photo"); a.href = p.download; a.setAttribute("download", p.name || "nathanael");
+    const capa = $("#set-cover");
+    capa.textContent = "Usar como capa ★"; capa.disabled = false;
+    capa.classList.toggle("hidden", !(p.id && !p.local && p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url)))); // só fotos que o navegador consegue mostrar
     $("#delete-photo").classList.toggle("hidden", !!p.local); // fotos locais (da pasta) não podem ser apagadas por aqui
     if (abrindo) history.pushState({ v: "photo", slug: active && active.slug }, "", location.href); // voltar fecha a foto
     lb.classList.remove("hidden"); document.body.style.overflow = "hidden";
@@ -192,6 +195,17 @@
       if (photos.length) show(Math.min(idx, photos.length - 1)); else closeLb();
     } catch (e) { alert(e.message); }
     btn.disabled = false;
+  });
+
+  // ---- Capa do álbum (só administrador) ----
+  $("#set-cover").addEventListener("click", async () => {
+    const p = photos[idx], btn = $("#set-cover");
+    if (!p || !p.id || !active) return;
+    btn.disabled = true;
+    try {
+      await api(`/albums/${encodeURIComponent(active.slug)}/cover`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photoId: p.id }) });
+      btn.textContent = "Capa definida ✓";
+    } catch (e) { alert(e.message); btn.disabled = false; }
   });
 
   // ---- Envio: o arquivo vai em pedaços de 3 MB direto para o Postgres (Neon) ----
