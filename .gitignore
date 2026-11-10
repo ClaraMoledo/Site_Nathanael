@@ -30,3 +30,6 @@ desktop.ini
 node_modules/
 .vercel
 .env*
+
+public/mini/
+public/Fotos/
