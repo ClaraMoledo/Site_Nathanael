@@ -5,6 +5,8 @@
   const root = document.documentElement;
   const grid = $("#album-grid"), statusEl = $("#status"), albumView = $("#album-view"), photoGrid = $("#photo-grid"), emptyEl = $("#empty-photos");
   const lb = $("#lightbox"), lbImg = $("#lightbox-image"), lbVideo = $("#lightbox-video"), lbAudio = $("#lightbox-audio"), lbFile = $("#lightbox-file");
+  lbImg.addEventListener("error", () => { const f = lbImg.dataset.f; if (f && lbImg.getAttribute("src") !== f) { delete lbImg.dataset.f; lbImg.src = f; } }); // versão leve faltando: abre o original
+  const PAPEL = { superadmin: "Superadmin", admin: "Administrador", convidado: "Convidado" };
   let albums = [], active = null, photos = [], idx = 0, me = null, escolhendoCapa = false;
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -52,22 +54,32 @@
     return data;
   }
 
+  // Versões leves geradas por miniaturas.py: grade usa a "mini" (480 px) e a tela cheia usa a "tela" (1600 px).
+  // Se a versão leve não existir, a imagem cai para o arquivo original (veja o onerror).
+  const versoesWeb = (url) => {
+    if (kindOf(url) !== "image" || isHeic(url)) return {};
+    const nome = String(url).split("/").pop().replace(/\.[a-z0-9]+$/i, "");
+    return { thumb: `fotos-web/mini/${nome}.webp`, view: `fotos-web/tela/${nome}.webp` };
+  };
+  const reserva = (url) => `data-f="${esc(url)}" onerror="if(this.dataset.f){this.src=this.dataset.f;this.removeAttribute('data-f')}"`;
+
   function localPhotos(album) {
     const cat = window.NATHANAEL_FOTOS_LOCAIS || {};
     const list = cat[album.slug] || cat[String(album.slug).replace(/_/g, "-")] || [];
     return list.map((p) => (typeof p === "string" ? { url: p } : p)).map((p) => ({
       url: p.url, download: p.original_url || p.url, caption: p.caption || "", kind: kindOf(p.url), name: p.url.split("/").pop(), local: true,
+      ...versoesWeb(p.url),
     }));
   }
 
   function renderAlbums() {
     grid.innerHTML = "";
     albums.forEach((a, pos) => {
-      const cover = a.cover || (localPhotos(a)[0] || {}).url || "";
+      const l0 = localPhotos(a)[0] || {}, cover = a.cover || l0.thumb || l0.url || "";
       const count = (a.photo_count || 0) + localPhotos(a).length;
       const card = document.createElement("button");
       card.type = "button"; card.className = "album-card";
-      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="cover-edit admin-only" role="button" tabindex="0">★ Trocar capa</span><span class="order-btns admin-only">${pos > 0 ? '<span class="order-btn" role="button" tabindex="0" data-dir="antes" aria-label="Mover para antes" title="Mover para antes">◀</span>' : ""}${pos < albums.length - 1 ? '<span class="order-btn" role="button" tabindex="0" data-dir="depois" aria-label="Mover para depois" title="Mover para depois">▶</span>' : ""}</span></div>
+      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="cover-edit admin-only" role="button" tabindex="0">★ Trocar capa</span><span class="order-btns super-only">${pos > 0 ? '<span class="order-btn" role="button" tabindex="0" data-dir="antes" aria-label="Mover para antes" title="Mover para antes">◀</span>' : ""}${pos < albums.length - 1 ? '<span class="order-btn" role="button" tabindex="0" data-dir="depois" aria-label="Mover para depois" title="Mover para depois">▶</span>' : ""}</span></div>
         <div class="album-card-body"><h3>${esc(a.title)}</h3><p>${esc(a.description || "Uma coleção de momentos especiais.")}</p>
         <div class="album-meta"><span>${[fmtDate(a.date), count ? count + " arquivo(s)" : ""].filter(Boolean).join(" · ")}</span><span aria-hidden="true">↗</span></div></div>`;
       card.addEventListener("click", () => openAlbum(a));
@@ -122,7 +134,7 @@
       b.type = "button"; b.className = "photo-tile"; b.setAttribute("aria-label", `Abrir ${p.caption || "arquivo " + (i + 1)}`);
       if (p.kind === "video") b.innerHTML = `<video src="${esc(p.url)}#t=0.1" preload="metadata" muted playsinline></video><span class="media-badge">▶</span>`;
       else if (p.kind === "image" && isHeic(p.name || p.url) && window.heic2any) { b.innerHTML = `<img alt="${esc(p.caption || "Foto do Nathanael")}" data-src="${esc(p.url)}">`; heicObserver.observe(b.firstElementChild); }
-      else if (p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url))) b.innerHTML = `<img loading="lazy" src="${esc(p.url)}" alt="${esc(p.caption || "Foto do Nathanael")}">`;
+      else if (p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url))) b.innerHTML = `<img loading="lazy" decoding="async" src="${esc(p.thumb || p.url)}" ${reserva(p.url)} alt="${esc(p.caption || "Foto do Nathanael")}">`;
       else b.innerHTML = `<span class="file-placeholder"><b>${p.kind === "audio" ? "♪" : p.kind === "image" ? "▣" : "📄"}</b><small>${esc(p.name || "arquivo")}</small></span>`;
       if (p.showCaption) b.insertAdjacentHTML("beforeend", `<span class="photo-tile-caption">${esc(p.caption)}</span>`);
       b.addEventListener("click", () => (escolhendoCapa ? escolherCapa(p) : show(i)));
@@ -143,7 +155,7 @@
     [lbImg, lbVideo, lbAudio, lbFile].forEach((el) => el.classList.add("hidden"));
     if (p.kind === "video") { lbVideo.src = p.url; lbVideo.classList.remove("hidden"); }
     else if (p.kind === "audio") { lbAudio.src = p.url; lbAudio.classList.remove("hidden"); }
-    else if (p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url))) { lbImg.src = p.url; lbImg.alt = p.caption || "Foto do Nathanael"; lbImg.classList.remove("hidden"); }
+    else if (p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url))) { lbImg.dataset.f = p.url; lbImg.src = p.view || p.url; lbImg.alt = p.caption || "Foto do Nathanael"; lbImg.classList.remove("hidden"); }
     else if (p.kind === "image" && isHeic(p.name || p.url) && window.heic2any) {
       const mine = idx; lbFile.textContent = "Convertendo foto…"; lbFile.classList.remove("hidden");
       heicToJpgUrl(p.url).then((u) => { if (mine !== idx) return; lbImg.src = u; lbImg.classList.remove("hidden"); lbFile.classList.add("hidden"); })
@@ -326,7 +338,7 @@
       usersList.innerHTML = "";
       list.forEach((u) => {
         const pendente = !u.approved, li = document.createElement("li");
-        li.innerHTML = `<div class="u-info"><strong>${esc(u.name || u.email)}</strong><small>${esc(u.email)} · ${u.role === "admin" ? "Administrador" : "Convidado"}</small>${pendente ? '<span class="u-tag">Aguardando aprovação</span>' : ""}</div>
+        li.innerHTML = `<div class="u-info"><strong>${esc(u.name || u.email)}</strong><small>${esc(u.email)} · ${PAPEL[u.role] || "Convidado"}</small>${pendente ? '<span class="u-tag">Aguardando aprovação</span>' : ""}</div>
           <div class="u-actions">${pendente ? '<button type="button" class="ghost-button small-btn" data-ok>Aprovar</button>' : '<button type="button" class="ghost-button small-btn" data-edit>Editar</button>'}${u.id === me.id ? "" : `<button type="button" class="danger-button small-btn" data-del>${pendente ? "Recusar" : "Remover"}</button>`}</div>`;
         const ok = li.querySelector("[data-ok]"), edit = li.querySelector("[data-edit]"), del = li.querySelector("[data-del]");
         if (ok) ok.addEventListener("click", async () => {
@@ -418,12 +430,13 @@
       // 401 já redirecionou para o login; outro erro (servidor fora do ar) cai no modo prévia
       console.error(e); root.classList.add("logado"); loadAlbums(); return;
     }
-    root.classList.toggle("is-admin", me.role === "admin");
+    root.classList.toggle("is-admin", me.role === "admin" || me.role === "superadmin");
+    root.classList.toggle("is-super", me.role === "superadmin");
     root.classList.add("logado");
     const chip = $("#user-chip");
-    chip.textContent = `${me.name || me.email} · ${me.role === "admin" ? "Administrador" : "Convidado"}`;
+    chip.textContent = `${me.name || me.email} · ${PAPEL[me.role] || "Convidado"}`;
     chip.classList.remove("hidden");
-    if (me.role === "admin") api("/usuarios").then(setBadge).catch(() => {}); // mostra quantos pedidos esperam aprovação
+    if (me.role === "superadmin") api("/usuarios").then(setBadge).catch(() => {}); // mostra quantos pedidos esperam aprovação
     await loadAlbums();
     const pedido = new URLSearchParams(location.search).get("album");
     const alvo = pedido && albums.find((a) => a.slug === pedido);

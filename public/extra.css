@@ -63,6 +63,7 @@ html:not(.logado) body:not(.login-page) { visibility: hidden; }
 
 /* Só o administrador vê estes itens */
 html:not(.is-admin) .admin-only { display: none !important; }
+html:not(.is-super) .super-only { display: none !important; }
 
 /* Títulos em Fraunces */
 .brand-mark, .brand strong, .hero h1, .cover-placeholder, .album-cover-title,

@@ -23,7 +23,7 @@
     </a>
     <div class="top-actions">
       <span id="user-chip" class="user-chip hidden"></span>
-      <button id="users-open" class="ghost-button small-btn admin-only" type="button">Acessos</button>
+      <button id="users-open" class="ghost-button small-btn super-only" type="button">Acessos</button>
       <button id="logout" class="ghost-button small-btn" type="button">Sair</button>
       <a class="top-link" href="#sobre">Sobre a galeria <span aria-hidden="true">↗</span></a>
       <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Alternar entre modo claro e noturno" title="Modo claro / noturno"><span class="sun" aria-hidden="true">☀</span><span class="moon" aria-hidden="true">☾</span></button>
@@ -47,7 +47,7 @@
     <section class="album-section" id="albuns">
       <div class="section-heading">
         <div><p class="eyebrow">NOSSA COLEÇÃO</p><h2>Momentos especiais</h2></div>
-        <div class="section-side"><p class="section-intro">Escolha um álbum para ver as fotos.</p><button id="album-new" class="primary-button small-button admin-only" type="button">Novo álbum <span aria-hidden="true">＋</span></button></div>
+        <div class="section-side"><p class="section-intro">Escolha um álbum para ver as fotos.</p><button id="album-new" class="primary-button small-button super-only" type="button">Novo álbum <span aria-hidden="true">＋</span></button></div>
       </div>
       <div id="status" class="status" role="status">Preparando suas memórias…</div>
       <div id="album-grid" class="album-grid"></div>
@@ -57,7 +57,7 @@
       <div class="album-toolbar">
         <button id="back-button" class="text-button" type="button">← Todos os álbuns</button>
         <div><p class="eyebrow">ÁLBUM SELECIONADO</p><h2 id="album-title">Álbum</h2><p id="album-description" class="section-intro"></p></div>
-        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><button id="cover-mode" class="ghost-button admin-only" type="button">Escolher capa ★</button><button id="album-edit" class="ghost-button admin-only" type="button">Editar álbum</button><a id="upload-link" class="primary-button small-button admin-only" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
+        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><button id="cover-mode" class="ghost-button admin-only" type="button">Escolher capa ★</button><button id="album-edit" class="ghost-button super-only" type="button">Editar álbum</button><a id="upload-link" class="primary-button small-button admin-only" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
       </div>
       <p id="cover-banner" class="cover-banner hidden">★ Escolha a foto que será a capa deste álbum. <button id="cover-cancel" class="text-button" type="button">Cancelar</button></p>
       <div id="photo-grid" class="photo-grid"></div>
@@ -95,14 +95,14 @@
     <div class="modal-card">
       <button id="users-close" class="modal-close" aria-label="Fechar" type="button">×</button>
       <h3>Acessos ao site</h3>
-      <p class="upload-hint">Só quem estiver aqui consegue entrar. Convidados veem e baixam fotos; administradores também enviam e apagam.</p>
+      <p class="upload-hint">Só quem estiver aqui consegue entrar. Convidados veem e baixam fotos. Administradores também enviam e apagam fotos e escolhem a capa. Superadmin cuida dos acessos e dos álbuns.</p>
       <ul id="users-list" class="users-list"></ul>
       <form id="user-form" class="user-form">
         <h4>Adicionar ou atualizar uma pessoa</h4>
         <input id="u-name" class="text-input" type="text" placeholder="Nome" maxlength="60" autocomplete="off">
         <input id="u-email" class="text-input" type="email" placeholder="E-mail" required autocomplete="off">
         <input id="u-pass" class="text-input" type="text" placeholder="Senha (mín. 6 caracteres; vazio mantém a atual)" autocomplete="off">
-        <select id="u-role" class="text-input"><option value="convidado">Convidado (só vê e baixa)</option><option value="admin">Administrador</option></select>
+        <select id="u-role" class="text-input"><option value="convidado">Convidado (só vê e baixa)</option><option value="admin">Administrador (envia e apaga fotos)</option><option value="superadmin">Superadmin (tudo, inclusive acessos)</option></select>
         <button class="primary-button" type="submit">Salvar</button>
         <p id="user-status" class="upload-status" role="status"></p>
       </form>

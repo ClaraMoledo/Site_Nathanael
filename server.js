@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import archiver from 'archiver';
+import sharp from 'sharp';
 
 const env = process.env;
 const scrypt = promisify(crypto.scrypt);
@@ -17,6 +18,7 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'publ
 const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 5 });
 const UUID = /^[0-9a-f-]{36}$/i;
 const fileUrl = (id) => `/api/photos/${id}/file`;
+const thumbUrl = (id, w = 480) => `/api/photos/${id}/thumb?w=${w}`;
 const safeName = (n) => String(n).normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
 
 const kindOf = (mime, name) => {
@@ -67,20 +69,33 @@ async function iniciaBanco() {
     email         text unique not null,
     name          text not null default '',
     password_hash text not null,
-    role          text not null default 'convidado' check (role in ('admin','convidado')),
+    role          text not null default 'convidado' check (role in ('superadmin','admin','convidado')),
     created_at    timestamptz not null default now()
   )`);
   await pool.query('alter table users add column if not exists approved boolean not null default true'); // quem já existia continua aprovado
   await pool.query('alter table albums add column if not exists cover_photo_id uuid references photos(id) on delete set null'); // capa escolhida pelo administrador
+  // Três níveis: superadmin (cuida dos acessos e dos álbuns), admin (envia/apaga fotos e escolhe capa) e convidado (vê e baixa).
+  const { rows: [ck] } = await pool.query("select pg_get_constraintdef(oid) as d from pg_constraint where conname='users_role_check'");
+  if (!ck || !ck.d.includes('superadmin')) {
+    await pool.query('alter table users drop constraint if exists users_role_check');
+    await pool.query("alter table users add constraint users_role_check check (role in ('superadmin','admin','convidado'))");
+  }
   const email = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
+  // Sem nenhum superadmin (primeira vez com os três níveis): a conta do ADMIN_EMAIL vira superadmin;
+  // só conta já aprovada (cadastro pendente nunca é promovido); se ela não existir, quem já era administrador
+  // (e só ele podia gerenciar usuários antes) vira superadmin, para ninguém perder o acesso aos usuários.
+  if (!(await pool.query("select 1 from users where role='superadmin' limit 1")).rowCount) {
+    const r = email ? await pool.query("update users set role='superadmin' where email=$1 and approved", [email]) : { rowCount: 0 };
+    if (!r.rowCount) await pool.query("update users set role='superadmin' where role='admin' and approved");
+  }
+  // Banco novo, sem ninguém: ADMIN_EMAIL + ADMIN_SENHA viram o primeiro superadmin
   if (email && env.ADMIN_SENHA) {
-    const { rowCount } = await pool.query("select 1 from users where role='admin' limit 1");
+    const { rowCount } = await pool.query('select 1 from users limit 1');
     if (!rowCount) {
       await pool.query(
-        `insert into users (email, name, password_hash, role) values ($1, $2, $3, 'admin')
-         on conflict (email) do update set role='admin', approved=true, password_hash=excluded.password_hash`,
+        "insert into users (email, name, password_hash, role) values ($1, $2, $3, 'superadmin') on conflict (email) do nothing",
         [email, String(env.ADMIN_NOME || 'Administrador').slice(0, 60), await hashSenha(String(env.ADMIN_SENHA))]);
-      console.log('Administrador criado:', email);
+      console.log('Superadmin criado:', email);
     }
   }
 }
@@ -161,29 +176,31 @@ const precisaUsuario = async (req, res, next) => {
     next();
   } catch (e) { next(e); }
 };
-const soAdmin = (req, res, next) => (req.usuario?.role === 'admin' ? next() : res.status(403).json({ erro: 'Só o administrador pode fazer isso.' }));
+const PAPEIS = ['superadmin', 'admin', 'convidado'];
+const soAdmin = (req, res, next) => (['superadmin', 'admin'].includes(req.usuario?.role) ? next() : res.status(403).json({ erro: 'Só o administrador pode fazer isso.' }));
+const soSuper = (req, res, next) => (req.usuario?.role === 'superadmin' ? next() : res.status(403).json({ erro: 'Só o superadmin pode fazer isso.' }));
 app.use('/api', precisaUsuario);
 
 app.get('/api/me', (req, res) => res.json(req.usuario));
 
 /* ======================== GERENCIAR ACESSOS (ADMIN) ======================== */
-app.get('/api/usuarios', soAdmin, h(async (_req, res) => {
+app.get('/api/usuarios', soSuper, h(async (_req, res) => {
   const { rows } = await pool.query('select id, email, name, role, approved from users order by approved, role, lower(name), email');
   res.json(rows);
 }));
 
-app.post('/api/usuarios', soAdmin, h(async (req, res) => {
+app.post('/api/usuarios', soSuper, h(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
   const nome = String(req.body?.nome || '').trim().slice(0, 60);
   const senha = String(req.body?.senha || '');
-  const role = req.body?.role === 'admin' ? 'admin' : 'convidado';
+  const role = PAPEIS.includes(req.body?.role) ? req.body.role : 'convidado';
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ erro: 'E-mail inválido.' });
   const atual = (await pool.query('select id, role from users where email=$1', [email])).rows[0];
   if (!atual && senha.length < 6) return res.status(400).json({ erro: 'Defina uma senha com pelo menos 6 caracteres.' });
   if (senha && senha.length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
-  if (atual && atual.role === 'admin' && role !== 'admin') {
-    const { rows: [c] } = await pool.query("select count(*)::int as n from users where role='admin'");
-    if (c.n <= 1) return res.status(400).json({ erro: 'Precisa existir pelo menos um administrador.' });
+  if (atual && atual.role === 'superadmin' && role !== 'superadmin') {
+    const { rows: [c] } = await pool.query("select count(*)::int as n from users where role='superadmin'");
+    if (c.n <= 1) return res.status(400).json({ erro: 'Precisa existir pelo menos um superadmin.' });
   }
   if (!atual) {
     await pool.query('insert into users (email, name, password_hash, role, approved) values ($1,$2,$3,$4,true)', [email, nome, await hashSenha(senha), role]);
@@ -195,7 +212,7 @@ app.post('/api/usuarios', soAdmin, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.delete('/api/usuarios/:id', soAdmin, h(async (req, res) => {
+app.delete('/api/usuarios/:id', soSuper, h(async (req, res) => {
   if (!UUID.test(req.params.id)) return res.status(400).json({ erro: 'Dados inválidos.' });
   if (req.params.id === req.usuario.id) return res.status(400).json({ erro: 'Você não pode remover o seu próprio acesso.' });
   const { rowCount } = await pool.query('delete from users where id=$1', [req.params.id]);
@@ -203,7 +220,7 @@ app.delete('/api/usuarios/:id', soAdmin, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/usuarios/:id/aprovar', soAdmin, h(async (req, res) => {
+app.post('/api/usuarios/:id/aprovar', soSuper, h(async (req, res) => {
   if (!UUID.test(req.params.id)) return res.status(400).json({ erro: 'Dados inválidos.' });
   const { rowCount } = await pool.query('update users set approved=true where id=$1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ erro: 'Pessoa não encontrada.' });
@@ -260,7 +277,7 @@ app.get('/api/albums', h(async (_req, res) => {
       ) as cover_id
     from albums a left join photos p on p.album_id=a.id and p.is_approved and p.is_complete
     where a.is_active group by a.id order by a.sort_order, a.created_at`);
-  res.json(rows.map(({ cover_id, ...a }) => ({ ...a, cover: cover_id ? fileUrl(cover_id) : '' })));
+  res.json(rows.map(({ cover_id, ...a }) => ({ ...a, cover: cover_id ? thumbUrl(cover_id) : '' })));
 }));
 
 // Criar, editar e apagar álbuns (só administrador)
@@ -272,7 +289,7 @@ const lerAlbum = (b = {}) => ({
   date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? b.date : null,
 });
 
-app.post('/api/albums', soAdmin, h(async (req, res) => {
+app.post('/api/albums', soSuper, h(async (req, res) => {
   const a = lerAlbum(req.body);
   if (a.title.length < 2) return res.status(400).json({ erro: 'Dê um nome ao álbum.' });
   const base = slugify(a.title);
@@ -284,7 +301,7 @@ app.post('/api/albums', soAdmin, h(async (req, res) => {
   res.status(201).json({ ok: true, slug });
 }));
 
-app.put('/api/albums/:slug', soAdmin, h(async (req, res) => {
+app.put('/api/albums/:slug', soSuper, h(async (req, res) => {
   const a = lerAlbum(req.body);
   if (a.title.length < 2) return res.status(400).json({ erro: 'Dê um nome ao álbum.' });
   const { rowCount } = await pool.query(
@@ -294,7 +311,7 @@ app.put('/api/albums/:slug', soAdmin, h(async (req, res) => {
 }));
 
 // Mudar a ordem dos álbuns: move um álbum uma posição para antes ou para depois (só administrador)
-app.post('/api/albums/:slug/mover', soAdmin, h(async (req, res) => {
+app.post('/api/albums/:slug/mover', soSuper, h(async (req, res) => {
   const { rows } = await pool.query('select id, slug from albums where is_active order by sort_order, created_at');
   const i = rows.findIndex((a) => a.slug === req.params.slug);
   if (i < 0) return res.status(404).json({ erro: 'Álbum não encontrado.' });
@@ -320,7 +337,7 @@ app.put('/api/albums/:slug/cover', soAdmin, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.delete('/api/albums/:slug', soAdmin, h(async (req, res) => {
+app.delete('/api/albums/:slug', soSuper, h(async (req, res) => {
   const album = await getAlbum(req.params.slug);
   if (!album) return res.status(404).json({ erro: 'Álbum não encontrado.' });
   const { rows: [c] } = await pool.query('select count(*)::int as n from photos where album_id=$1', [album.id]);
@@ -336,6 +353,7 @@ app.get('/api/albums/:slug/photos', h(async (req, res) => {
   res.json(rows.map((p) => ({
     id: p.id, name: p.original_name, caption: p.caption, by: p.uploaded_by, kind: p.kind, mime: p.mime,
     size: Number(p.size_bytes), date: p.created_at, url: fileUrl(p.id), download: `/api/photos/${p.id}/download`,
+    ...(p.kind === 'image' ? { thumb: thumbUrl(p.id), view: thumbUrl(p.id, 1600) } : {}),
   })));
 }));
 
@@ -379,6 +397,27 @@ app.post('/api/uploads/:id/complete', soAdmin, h(async (req, res) => {
 
 app.get('/api/photos/:id/file', h((req, res) => sendFile(req, res, false)));
 app.get('/api/photos/:id/download', h((req, res) => sendFile(req, res, true)));
+
+// Versão leve de uma foto: 480 px para a grade (lado menor) e 1600 px para a tela cheia (lado maior), em WebP.
+// O original continua no Neon e é o que sai no "Baixar". Se a foto não der para converter (HEIC, por exemplo), vai o original.
+const LARGURAS = { 480: { fit: 'outside', quality: 72 }, 1600: { fit: 'inside', quality: 80 } };
+app.get('/api/photos/:id/thumb', h(async (req, res) => {
+  const w = Number(req.query.w) || 480, cfg = LARGURAS[w];
+  const p = await getPhoto(req.params.id);
+  if (!p || !cfg) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+  // só imagem de até 20 MB passa pelo sharp; o resto (vídeo, arquivo enorme) vai direto como original
+  if (!String(p.mime).startsWith('image/') || Number(p.size_bytes) > 20 * 1024 * 1024) return res.redirect(fileUrl(p.id));
+  const { rows } = await pool.query('select data from photo_chunks where photo_id=$1 order by idx', [p.id]);
+  let out;
+  try {
+    out = await sharp(Buffer.concat(rows.map((r) => r.data)), { failOn: 'error', limitInputPixels: 50e6 })
+      .rotate().resize({ width: w, height: w, fit: cfg.fit, withoutEnlargement: true })
+      .webp({ quality: cfg.quality }).toBuffer();
+  } catch { return res.redirect(fileUrl(p.id)); }
+  res.setHeader('Content-Type', 'image/webp');
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.end(out);
+}));
 
 // Apagar uma foto/vídeo/áudio (só administrador). Os pedaços em photo_chunks somem junto (on delete cascade).
 app.delete('/api/photos/:id', soAdmin, h(async (req, res) => {
