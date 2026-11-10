@@ -293,6 +293,20 @@ app.put('/api/albums/:slug', soAdmin, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Mudar a ordem dos álbuns: move um álbum uma posição para antes ou para depois (só administrador)
+app.post('/api/albums/:slug/mover', soAdmin, h(async (req, res) => {
+  const { rows } = await pool.query('select id, slug from albums where is_active order by sort_order, created_at');
+  const i = rows.findIndex((a) => a.slug === req.params.slug);
+  if (i < 0) return res.status(404).json({ erro: 'Álbum não encontrado.' });
+  const j = i + (req.body?.dir === 'antes' ? -1 : 1);
+  if (j >= 0 && j < rows.length) {
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+    // renumera todos (0, 1, 2…) para a ordem ficar sempre limpa
+    await pool.query('update albums a set sort_order = t.ord::int from unnest($1::uuid[]) with ordinality as t(id, ord) where a.id = t.id', [rows.map((r) => r.id)]);
+  }
+  res.json({ ok: true });
+}));
+
 // Escolher a foto de capa do álbum (só administrador)
 app.put('/api/albums/:slug/cover', soAdmin, h(async (req, res) => {
   const album = await getAlbum(req.params.slug);

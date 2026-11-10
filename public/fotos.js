@@ -62,12 +62,12 @@
 
   function renderAlbums() {
     grid.innerHTML = "";
-    albums.forEach((a) => {
+    albums.forEach((a, pos) => {
       const cover = a.cover || (localPhotos(a)[0] || {}).url || "";
       const count = (a.photo_count || 0) + localPhotos(a).length;
       const card = document.createElement("button");
       card.type = "button"; card.className = "album-card";
-      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="cover-edit admin-only" role="button" tabindex="0">★ Trocar capa</span></div>
+      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="cover-edit admin-only" role="button" tabindex="0">★ Trocar capa</span><span class="order-btns admin-only">${pos > 0 ? '<span class="order-btn" role="button" tabindex="0" data-dir="antes" aria-label="Mover para antes" title="Mover para antes">◀</span>' : ""}${pos < albums.length - 1 ? '<span class="order-btn" role="button" tabindex="0" data-dir="depois" aria-label="Mover para depois" title="Mover para depois">▶</span>' : ""}</span></div>
         <div class="album-card-body"><h3>${esc(a.title)}</h3><p>${esc(a.description || "Uma coleção de momentos especiais.")}</p>
         <div class="album-meta"><span>${[fmtDate(a.date), count ? count + " arquivo(s)" : ""].filter(Boolean).join(" · ")}</span><span aria-hidden="true">↗</span></div></div>`;
       card.addEventListener("click", () => openAlbum(a));
@@ -75,6 +75,15 @@
       const iniciaTroca = (ev) => { ev.stopPropagation(); ev.preventDefault(); escolhendoCapa = true; openAlbum(a); };
       trocar.addEventListener("click", iniciaTroca);
       trocar.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") iniciaTroca(ev); });
+      card.querySelectorAll(".order-btn").forEach((btn) => {
+        const mover = async (ev) => {
+          ev.stopPropagation(); ev.preventDefault();
+          try { await api(`/albums/${encodeURIComponent(a.slug)}/mover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dir: btn.dataset.dir }) }); await loadAlbums(); }
+          catch (e) { alert(e.message); }
+        };
+        btn.addEventListener("click", mover);
+        btn.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") mover(ev); });
+      });
       grid.appendChild(card);
     });
   }
