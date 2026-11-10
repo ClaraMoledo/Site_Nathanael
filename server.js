@@ -252,11 +252,50 @@ async function sendFile(req, res, attachment) {
 
 app.get('/api/albums', h(async (_req, res) => {
   const { rows } = await pool.query(`
-    select a.slug, a.title, a.description, a.event_date as date, a.icon, count(p.id)::int as photo_count,
+    select a.slug, a.title, a.description, a.event_date::text as date, a.icon, count(p.id)::int as photo_count,
       (select id from photos where album_id=a.id and is_approved and is_complete and kind='image' order by created_at limit 1) as cover_id
     from albums a left join photos p on p.album_id=a.id and p.is_approved and p.is_complete
     where a.is_active group by a.id order by a.sort_order, a.created_at`);
   res.json(rows.map(({ cover_id, ...a }) => ({ ...a, cover: cover_id ? fileUrl(cover_id) : '' })));
+}));
+
+// Criar, editar e apagar álbuns (só administrador)
+const slugify = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'album';
+const lerAlbum = (b = {}) => ({
+  title: String(b.title || '').trim().slice(0, 80),
+  description: String(b.description || '').trim().slice(0, 300),
+  icon: String(b.icon || '').trim().slice(0, 8) || '♡',
+  date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? b.date : null,
+});
+
+app.post('/api/albums', soAdmin, h(async (req, res) => {
+  const a = lerAlbum(req.body);
+  if (a.title.length < 2) return res.status(400).json({ erro: 'Dê um nome ao álbum.' });
+  const base = slugify(a.title);
+  let slug = base, n = 1;
+  while ((await pool.query('select 1 from albums where slug=$1', [slug])).rowCount) slug = `${base}_${++n}`;
+  await pool.query(
+    `insert into albums (slug, title, description, event_date, icon, sort_order)
+     values ($1,$2,$3,$4,$5,(select coalesce(max(sort_order),0)+1 from albums))`, [slug, a.title, a.description, a.date, a.icon]);
+  res.status(201).json({ ok: true, slug });
+}));
+
+app.put('/api/albums/:slug', soAdmin, h(async (req, res) => {
+  const a = lerAlbum(req.body);
+  if (a.title.length < 2) return res.status(400).json({ erro: 'Dê um nome ao álbum.' });
+  const { rowCount } = await pool.query(
+    'update albums set title=$2, description=$3, event_date=$4, icon=$5 where slug=$1 and is_active', [req.params.slug, a.title, a.description, a.date, a.icon]);
+  if (!rowCount) return res.status(404).json({ erro: 'Álbum não encontrado.' });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/albums/:slug', soAdmin, h(async (req, res) => {
+  const album = await getAlbum(req.params.slug);
+  if (!album) return res.status(404).json({ erro: 'Álbum não encontrado.' });
+  const { rows: [c] } = await pool.query('select count(*)::int as n from photos where album_id=$1', [album.id]);
+  if (c.n) return res.status(400).json({ erro: 'Este álbum ainda tem arquivos. Apague os arquivos antes de apagar o álbum.' });
+  await pool.query('delete from albums where id=$1', [album.id]);
+  res.json({ ok: true });
 }));
 
 app.get('/api/albums/:slug/photos', h(async (req, res) => {

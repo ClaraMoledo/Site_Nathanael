@@ -227,6 +227,15 @@ footer { font-size: 12px; color: var(--suave); border-top: 1px solid var(--borda
 .user-form h4 { margin: 0; font-size: 16px; color: var(--titulo); }
 .user-form .upload-status { margin: 0; }
 
+/* Cartão de álbum: conteúdo sempre colado no topo, sem título repetido sobre a capa */
+.album-card { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; text-align: left; }
+.album-card-body { flex: 1; display: flex; flex-direction: column; }
+.album-card-body .album-meta { margin-top: auto; }
+.album-cover-title, .album-cover::after { display: none; }
+.section-side { display: grid; gap: 12px; justify-items: start; }
+textarea.text-input { min-height: 88px; resize: vertical; font-family: var(--fonte-texto); line-height: 1.5; }
+.user-form .danger-button { justify-self: start; }
+
 /* Pedidos de acesso aguardando aprovação */
 .u-tag {
   display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px;

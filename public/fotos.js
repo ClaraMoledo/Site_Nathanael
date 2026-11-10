@@ -67,7 +67,7 @@
       const count = (a.photo_count || 0) + localPhotos(a).length;
       const card = document.createElement("button");
       card.type = "button"; card.className = "album-card";
-      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="album-cover-title">${esc(a.title)}</span></div>
+      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span></div>
         <div class="album-card-body"><h3>${esc(a.title)}</h3><p>${esc(a.description || "Uma coleção de momentos especiais.")}</p>
         <div class="album-meta"><span>${[fmtDate(a.date), count ? count + " arquivo(s)" : ""].filter(Boolean).join(" · ")}</span><span aria-hidden="true">↗</span></div></div>`;
       card.addEventListener("click", () => openAlbum(a));
@@ -285,6 +285,55 @@
       uName.value = ""; uEmail.value = ""; uPass.value = ""; uRole.value = "convidado";
       loadUsers();
     } catch (e) { userStatus.textContent = e.message; }
+  });
+
+  // ---- Álbuns (só administrador): criar, editar e apagar ----
+  const albumModal = $("#album-modal"), albumStatus = $("#album-status"), aTitle = $("#a-title"), aIcon = $("#a-icon"), aDate = $("#a-date"), aDesc = $("#a-desc");
+  let editando = null; // null = novo álbum
+  function openAlbumModal(album) {
+    editando = album;
+    $("#album-modal-title").textContent = album ? "Editar álbum" : "Novo álbum";
+    aTitle.value = album ? album.title : ""; aIcon.value = album ? album.icon || "" : ""; aDate.value = album && album.date ? String(album.date).slice(0, 10) : ""; aDesc.value = album ? album.description || "" : "";
+    $("#album-delete").classList.toggle("hidden", !album);
+    albumStatus.textContent = "";
+    albumModal.classList.remove("hidden"); aTitle.focus();
+  }
+  const closeAlbumModal = () => albumModal.classList.add("hidden");
+  $("#album-new").addEventListener("click", () => openAlbumModal(null));
+  $("#album-edit").addEventListener("click", () => active && openAlbumModal(active));
+  $("#album-close").addEventListener("click", closeAlbumModal);
+  albumModal.addEventListener("click", (e) => { if (e.target === albumModal) closeAlbumModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !albumModal.classList.contains("hidden")) closeAlbumModal(); });
+
+  $("#album-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    albumStatus.textContent = "Salvando…";
+    const body = JSON.stringify({ title: aTitle.value, icon: aIcon.value, date: aDate.value, description: aDesc.value });
+    const headers = { "Content-Type": "application/json" };
+    try {
+      if (editando) {
+        await api(`/albums/${encodeURIComponent(editando.slug)}`, { method: "PUT", headers, body });
+        if (active && active.slug === editando.slug) {
+          Object.assign(active, { title: aTitle.value.trim(), icon: aIcon.value.trim() || "♡", date: aDate.value, description: aDesc.value.trim() });
+          $("#album-title").textContent = active.title;
+          $("#album-description").textContent = [fmtDate(active.date), active.description].filter(Boolean).join(" · ");
+        }
+      } else {
+        await api("/albums", { method: "POST", headers, body });
+      }
+      closeAlbumModal();
+      loadAlbums();
+    } catch (e) { albumStatus.textContent = e.message; }
+  });
+
+  $("#album-delete").addEventListener("click", async () => {
+    if (!editando || !confirm(`Apagar o álbum "${editando.title}"?\nSó álbuns vazios podem ser apagados.`)) return;
+    try {
+      await api(`/albums/${encodeURIComponent(editando.slug)}`, { method: "DELETE" });
+      closeAlbumModal();
+      albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden"); $("#albuns").scrollIntoView({ behavior: "smooth" });
+      loadAlbums();
+    } catch (e) { albumStatus.textContent = e.message; }
   });
 
   // ---- Início: confere o login antes de mostrar qualquer coisa ----

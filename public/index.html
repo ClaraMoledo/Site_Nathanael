@@ -47,7 +47,7 @@
     <section class="album-section" id="albuns">
       <div class="section-heading">
         <div><p class="eyebrow">NOSSA COLEÇÃO</p><h2>Momentos especiais</h2></div>
-        <p class="section-intro">Escolha um álbum para ver as fotos.</p>
+        <div class="section-side"><p class="section-intro">Escolha um álbum para ver as fotos.</p><button id="album-new" class="primary-button small-button admin-only" type="button">Novo álbum <span aria-hidden="true">＋</span></button></div>
       </div>
       <div id="status" class="status" role="status">Preparando suas memórias…</div>
       <div id="album-grid" class="album-grid"></div>
@@ -57,7 +57,7 @@
       <div class="album-toolbar">
         <button id="back-button" class="text-button" type="button">← Todos os álbuns</button>
         <div><p class="eyebrow">ÁLBUM SELECIONADO</p><h2 id="album-title">Álbum</h2><p id="album-description" class="section-intro"></p></div>
-        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><a id="upload-link" class="primary-button small-button admin-only" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
+        <div class="toolbar-actions"><span id="album-count" class="count-chip"></span><a id="download-all" class="ghost-button hidden" href="#" download>Baixar todas (ZIP) <span aria-hidden="true">↓</span></a><button id="album-edit" class="ghost-button admin-only" type="button">Editar álbum</button><a id="upload-link" class="primary-button small-button admin-only" href="#envio">Adicionar fotos <span aria-hidden="true">＋</span></a></div>
       </div>
       <div id="photo-grid" class="photo-grid"></div>
       <p id="empty-photos" class="empty-state hidden">Este álbum ainda não tem fotos. Em breve novas memórias aparecem por aqui. 💚</p>
@@ -104,6 +104,26 @@
         <select id="u-role" class="text-input"><option value="convidado">Convidado (só vê e baixa)</option><option value="admin">Administrador</option></select>
         <button class="primary-button" type="submit">Salvar</button>
         <p id="user-status" class="upload-status" role="status"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="album-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Álbum">
+    <div class="modal-card">
+      <button id="album-close" class="modal-close" aria-label="Fechar" type="button">×</button>
+      <h3 id="album-modal-title">Novo álbum</h3>
+      <form id="album-form" class="user-form">
+        <label class="field-label" for="a-title">Nome do álbum</label>
+        <input id="a-title" class="text-input" type="text" maxlength="80" required placeholder="Ex.: Primeiro banho">
+        <label class="field-label" for="a-icon">Ícone (um emoji)</label>
+        <input id="a-icon" class="text-input" type="text" maxlength="8" placeholder="Ex.: 🛁">
+        <label class="field-label" for="a-date">Data (opcional)</label>
+        <input id="a-date" class="text-input" type="date">
+        <label class="field-label" for="a-desc">Descrição (opcional)</label>
+        <textarea id="a-desc" class="text-input" maxlength="300" rows="3" placeholder="Uma frase sobre este álbum"></textarea>
+        <button class="primary-button" type="submit">Salvar</button>
+        <button id="album-delete" class="danger-button hidden" type="button">Apagar álbum 🗑</button>
+        <p id="album-status" class="upload-status" role="status"></p>
       </form>
     </div>
   </div>
