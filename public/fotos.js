@@ -5,7 +5,7 @@
   const root = document.documentElement;
   const grid = $("#album-grid"), statusEl = $("#status"), albumView = $("#album-view"), photoGrid = $("#photo-grid"), emptyEl = $("#empty-photos");
   const lb = $("#lightbox"), lbImg = $("#lightbox-image"), lbVideo = $("#lightbox-video"), lbAudio = $("#lightbox-audio"), lbFile = $("#lightbox-file");
-  let albums = [], active = null, photos = [], idx = 0, me = null;
+  let albums = [], active = null, photos = [], idx = 0, me = null, escolhendoCapa = false;
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const extOf = (n) => (String(n || "").split(/[?#]/)[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase() || "";
@@ -67,10 +67,14 @@
       const count = (a.photo_count || 0) + localPhotos(a).length;
       const card = document.createElement("button");
       card.type = "button"; card.className = "album-card";
-      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span></div>
+      card.innerHTML = `<div class="album-cover">${cover ? `<img loading="lazy" src="${esc(cover)}" alt="" onerror="this.remove()">` : ""}<span class="cover-placeholder">${esc(a.icon || "♡")}</span><span class="cover-edit admin-only" role="button" tabindex="0">★ Trocar capa</span></div>
         <div class="album-card-body"><h3>${esc(a.title)}</h3><p>${esc(a.description || "Uma coleção de momentos especiais.")}</p>
         <div class="album-meta"><span>${[fmtDate(a.date), count ? count + " arquivo(s)" : ""].filter(Boolean).join(" · ")}</span><span aria-hidden="true">↗</span></div></div>`;
       card.addEventListener("click", () => openAlbum(a));
+      const trocar = card.querySelector(".cover-edit");
+      const iniciaTroca = (ev) => { ev.stopPropagation(); ev.preventDefault(); escolhendoCapa = true; openAlbum(a); };
+      trocar.addEventListener("click", iniciaTroca);
+      trocar.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") iniciaTroca(ev); });
       grid.appendChild(card);
     });
   }
@@ -94,6 +98,7 @@
     $("#album-title").textContent = album.title;
     $("#album-description").textContent = [fmtDate(album.date), album.description].filter(Boolean).join(" · ");
     albumView.classList.remove("hidden"); $("#albuns").classList.add("hidden");
+    $("#cover-banner").classList.toggle("hidden", !escolhendoCapa);
     photoGrid.innerHTML = '<p class="status">Carregando…</p>'; emptyEl.classList.add("hidden");
     albumView.scrollIntoView({ behavior: "smooth", block: "start" });
     photos = await loadPhotos(album);
@@ -102,6 +107,7 @@
 
   function renderPhotos() {
     photoGrid.innerHTML = "";
+    photoGrid.classList.toggle("escolhendo", escolhendoCapa);
     photos.forEach((p, i) => {
       const b = document.createElement("button");
       b.type = "button"; b.className = "photo-tile"; b.setAttribute("aria-label", `Abrir ${p.caption || "arquivo " + (i + 1)}`);
@@ -110,7 +116,7 @@
       else if (p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url))) b.innerHTML = `<img loading="lazy" src="${esc(p.url)}" alt="${esc(p.caption || "Foto do Nathanael")}">`;
       else b.innerHTML = `<span class="file-placeholder"><b>${p.kind === "audio" ? "♪" : p.kind === "image" ? "▣" : "📄"}</b><small>${esc(p.name || "arquivo")}</small></span>`;
       if (p.showCaption) b.insertAdjacentHTML("beforeend", `<span class="photo-tile-caption">${esc(p.caption)}</span>`);
-      b.addEventListener("click", () => show(i));
+      b.addEventListener("click", () => (escolhendoCapa ? escolherCapa(p) : show(i)));
       photoGrid.appendChild(b);
     });
     const n = photos.length, dl = $("#download-all");
@@ -149,6 +155,7 @@
 
   // ---- Voltar (botão do navegador, gesto do celular ou a seta do site) ----
   function mostraListaUI() {
+    escolhendoCapa = false; $("#cover-banner").classList.add("hidden");
     albumView.classList.add("hidden"); $("#albuns").classList.remove("hidden");
     $("#albuns").scrollIntoView({ behavior: "smooth" }); loadAlbums();
   }
@@ -198,6 +205,20 @@
   });
 
   // ---- Capa do álbum (só administrador) ----
+  const podeSerCapa = (p) => p.id && !p.local && p.kind === "image" && SHOWABLE.includes(extOf(p.name || p.url));
+  async function escolherCapa(p) {
+    if (!podeSerCapa(p)) return alert("Escolha uma foto (JPG, PNG ou WEBP). Vídeos e áudios não servem como capa.");
+    try {
+      await api(`/albums/${encodeURIComponent(active.slug)}/cover`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photoId: p.id }) });
+      escolhendoCapa = false; $("#cover-banner").classList.add("hidden"); photoGrid.classList.remove("escolhendo");
+      voltaParaLista(); // a lista recarrega já com a capa nova
+    } catch (e) { alert(e.message); }
+  }
+  $("#cover-mode").addEventListener("click", () => {
+    escolhendoCapa = true; $("#cover-banner").classList.remove("hidden"); photoGrid.classList.add("escolhendo");
+    photoGrid.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("#cover-cancel").addEventListener("click", () => { escolhendoCapa = false; $("#cover-banner").classList.add("hidden"); photoGrid.classList.remove("escolhendo"); });
   $("#set-cover").addEventListener("click", async () => {
     const p = photos[idx], btn = $("#set-cover");
     if (!p || !p.id || !active) return;
